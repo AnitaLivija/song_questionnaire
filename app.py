@@ -27,7 +27,7 @@ logger = logging.getLogger(__name__)
 
 
 st.set_page_config(
-    page_title="Our Group Soundtrack",
+    page_title="Teikas Tautas Bumbas Sountrack",
     page_icon="🎵",
 )
 
@@ -35,7 +35,7 @@ SESSION_ID = "group-2026"
 
 QUESTIONS = [
     "Kura dziesma Tevi visvairāk motivē bumbā pamatīgi uzbliezt?",
-    "Kura dziesma Tev visvairāk asociējas ar Tautas bumbu treniņiem?",
+    "Kura dziesma Tev visvairāk asociējas ar Tautas bumbas treniņiem?",
     "Kura dziesma vislabāk raksturo Tevi ballītēs?",
 ]
 
