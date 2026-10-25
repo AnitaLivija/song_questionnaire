@@ -124,7 +124,7 @@ if unanswered:
     st.progress(len(answers) / len(QUESTIONS))
 
     st.subheader(
-        f"Question {index + 1} of {len(QUESTIONS)}"
+        f"Jautājums {index + 1} no {len(QUESTIONS)}"
     )
     st.write(QUESTIONS[index])
 
