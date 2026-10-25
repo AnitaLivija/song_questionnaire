@@ -1,6 +1,9 @@
-.venv/
-__pycache__/
-*.pyc
-songs.db
 .streamlit/secrets.toml
+.cache/
+__pycache__/
+*.py[cod]
+songs.db
+*.db
+.venv/
+venv/
 .env
