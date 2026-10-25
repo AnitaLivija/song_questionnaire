@@ -40,8 +40,10 @@ QUESTIONS = [
 ]
 
 
+
 # Temporary, password-protected Spotify authorization setup.
 params = st.query_params
+
 setup_mode = (
     params.get("spotify_setup") == "1"
     or "code" in params
@@ -54,19 +56,24 @@ if setup_mode:
     password = st.text_input(
         "Enter the Spotify setup password",
         type="password",
+        key="spotify_setup_password",
     )
+
+    configured_password = st.secrets["SPOTIFY_SETUP_PASSWORD"]
 
     if not hmac.compare_digest(
         password,
-        st.secrets["SPOTIFY_SETUP_PASSWORD"],
+        configured_password,
     ):
         st.info("Enter your setup password to continue.")
         st.stop()
 
+    redirect_uri = st.secrets["SPOTIFY_REDIRECT_URI"]
+
     auth = SpotifyOAuth(
         client_id=st.secrets["SPOTIFY_CLIENT_ID"],
         client_secret=st.secrets["SPOTIFY_CLIENT_SECRET"],
-        redirect_uri=st.secrets["SPOTIFY_REDIRECT_URI"],
+        redirect_uri=redirect_uri,
         scope=(
             "playlist-modify-private "
             "playlist-modify-public "
@@ -78,48 +85,65 @@ if setup_mode:
 
     if "error" in params:
         st.error(
-            "Spotify authorization was denied or failed: "
+            "Spotify authorization failed: "
             + str(params.get("error"))
         )
         st.stop()
 
     if "code" in params:
-        returned_state = params.get("state")
-        expected_state = st.session_state.get(
-            "spotify_oauth_state"
-        )
+        returned_state = params.get("state", "")
 
-        if (
-            not expected_state
-            or not returned_state
-            or not hmac.compare_digest(
-                str(returned_state),
-                str(expected_state),
+        try:
+            timestamp, nonce, signature = str(
+                returned_state
+            ).split(".", 2)
+
+            message = f"{timestamp}.{nonce}"
+
+            expected_signature = hmac.new(
+                configured_password.encode("utf-8"),
+                message.encode("utf-8"),
+                digestmod="sha256",
+            ).hexdigest()
+
+            state_is_valid = (
+                hmac.compare_digest(
+                    signature,
+                    expected_signature,
+                )
+                and 0 <= time.time() - int(timestamp) <= 600
             )
-        ):
+
+        except (ValueError, TypeError):
+            state_is_valid = False
+
+        if not state_is_valid:
             st.error(
-                "The authorization session expired or did not "
-                "match. Start the setup again."
+                "The authorization link expired or is invalid. "
+                "Please start again."
             )
             st.stop()
 
         try:
             token_info = auth.get_access_token(
-                params.get("code"),
+                str(params.get("code")),
                 as_dict=True,
                 check_cache=False,
             )
 
-            if not token_info or not token_info.get(
-                "refresh_token"
+            if (
+                not token_info
+                or not token_info.get("access_token")
+                or not token_info.get("refresh_token")
             ):
                 st.error(
-                    "Spotify did not return a refresh token. "
+                    "Spotify did not return all required tokens. "
                     "Please restart authorization."
                 )
                 st.stop()
 
             st.session_state["spotify_token_info"] = token_info
+
             st.query_params.clear()
             st.rerun()
 
@@ -128,8 +152,8 @@ if setup_mode:
                 "Spotify authorization exchange failed"
             )
             st.error(
-                "Spotify authorization failed. Check the "
-                "Streamlit app logs."
+                "Spotify authorization failed. "
+                "Check the Streamlit app logs."
             )
             st.stop()
 
@@ -138,25 +162,36 @@ if setup_mode:
     if token_info:
         st.success("Spotify authorization completed!")
         st.write(
-            "Copy the token JSON below into Streamlit Secrets. "
-            "Do not share it or commit it to GitHub."
+            "Copy the JSON below into Streamlit Secrets. "
+            "Keep it private."
         )
         st.code(json.dumps(token_info), language="json")
         st.stop()
 
     if st.button("Start Spotify authorization"):
-        state = py_secrets.token_urlsafe(32)
-        st.session_state["spotify_oauth_state"] = state
+        timestamp = str(int(time.time()))
+        nonce = py_secrets.token_urlsafe(24)
+        message = f"{timestamp}.{nonce}"
 
-        authorize_url = auth.get_authorize_url(state=state)
+        signature = hmac.new(
+            configured_password.encode("utf-8"),
+            message.encode("utf-8"),
+            digestmod="sha256",
+        ).hexdigest()
 
-        st.markdown(
-            f'<a href="{authorize_url}" target="_self">'
-            "Continue to Spotify to approve access</a>",
-            unsafe_allow_html=True,
+        state = f"{message}.{signature}"
+
+        authorize_url = auth.get_authorize_url(
+            state=state
+        )
+
+        st.link_button(
+            "Continue to Spotify to approve access",
+            authorize_url,
         )
 
     st.stop()
+
 
 # Initialize the Supabase database.
 try:
