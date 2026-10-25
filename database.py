@@ -1,12 +1,17 @@
 
+import os
 
-import sqlite3
+import psycopg
 
-DB_PATH = "songs.db"
+
+DATABASE_URL = os.environ["DATABASE_URL"]
 
 
 def connect():
-    return sqlite3.connect(DB_PATH, timeout=10)
+    return psycopg.connect(
+        DATABASE_URL,
+        sslmode="require",
+    )
 
 
 def init_db():
@@ -27,24 +32,18 @@ def init_db():
                     session_id,
                     participant_id,
                     question_number
-                )
+                ),
+
+                spotify_synced BOOLEAN NOT NULL DEFAULT FALSE
             )
         """)
 
-        # Safely update an existing database.
-        columns = {
-            row[1]
-            for row in con.execute(
-                "PRAGMA table_info(reservations)"
-            ).fetchall()
-        }
-
-        if "spotify_synced" not in columns:
-            con.execute("""
-                ALTER TABLE reservations
-                ADD COLUMN spotify_synced INTEGER
-                NOT NULL DEFAULT 0
-            """)
+        # Safely add the column if the table already exists.
+        con.execute("""
+            ALTER TABLE reservations
+            ADD COLUMN IF NOT EXISTS spotify_synced
+            BOOLEAN NOT NULL DEFAULT FALSE
+        """)
 
 
 def reserve_song(
@@ -65,7 +64,7 @@ def reserve_song(
                     track_name,
                     artist_name
                 )
-                VALUES (?, ?, ?, ?, ?, ?, ?)
+                VALUES (%s, %s, %s, %s, %s, %s, %s)
             """, (
                 session_id,
                 participant_id,
@@ -78,12 +77,12 @@ def reserve_song(
 
             return True, "Song accepted!"
 
-        except sqlite3.IntegrityError:
+        except psycopg.IntegrityError:
             existing_track = con.execute("""
                 SELECT 1
                 FROM reservations
-                WHERE session_id = ?
-                  AND track_id = ?
+                WHERE session_id = %s
+                  AND track_id = %s
             """, (
                 session_id,
                 track["id"],
@@ -107,8 +106,8 @@ def get_participant_answers(session_id, participant_id):
             SELECT question_number, track_id, track_uri,
                    track_name, artist_name
             FROM reservations
-            WHERE session_id = ?
-              AND participant_id = ?
+            WHERE session_id = %s
+              AND participant_id = %s
             ORDER BY question_number
         """, (
             session_id,
@@ -123,8 +122,8 @@ def get_unsynced_songs(session_id):
         rows = con.execute("""
             SELECT track_id, track_uri
             FROM reservations
-            WHERE session_id = ?
-              AND spotify_synced = 0
+            WHERE session_id = %s
+              AND spotify_synced = FALSE
             ORDER BY question_number
         """, (session_id,)).fetchall()
 
@@ -135,9 +134,9 @@ def mark_song_synced(session_id, track_id):
     with connect() as con:
         con.execute("""
             UPDATE reservations
-            SET spotify_synced = 1
-            WHERE session_id = ?
-              AND track_id = ?
+            SET spotify_synced = TRUE
+            WHERE session_id = %s
+              AND track_id = %s
         """, (
             session_id,
             track_id,
