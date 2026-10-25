@@ -35,7 +35,7 @@ SESSION_ID = "group-2026"
 
 QUESTIONS = [
     "Kura dziesma Tevi visvairāk motivē bumbā pamatīgi uzbliezt?",
-    "Kura dziesma Tev visvairāk asociējas ar Tautas bumbas treniņiem?",
+    "Kura dziesma Tev visvairāk asociējas ar tautas bumbas treniņiem?",
     "Kura dziesma vislabāk raksturo Tevi ballītēs?",
 ]
 
@@ -70,13 +70,13 @@ def sync_pending_songs():
             logger.exception("Could not sync a pending song to Spotify")
 
 
-st.title("🎵 Our Group Soundtrack")
-st.write("Three questions. Three songs. One shared playlist.")
+st.title("🎵 Teikas Tautas Bumbas Sountrack")
+st.write("Trīs jautajumi. Trīs dziesmas. Viena lieliska playliste.")
 
-name = st.text_input("What's your name?")
+name = st.text_input("Kāds ir Tavs pilnais vārds?")
 
 if not name.strip():
-    st.info("Enter your name to get started.")
+    st.info("Ieraksti savu vārdu, lai sāktu izvelēties dziesmas!")
     st.stop()
 
 
@@ -94,8 +94,8 @@ try:
 except Exception:
     logger.exception("Could not load participant answers")
     st.error(
-        "We couldn't load your saved answers. "
-        "Please try again later."
+        "Nevarējām ielādēt Tavas saglabātās dziesmas. "
+        "Pamēģini vēlāk."
     )
     st.stop()
 
@@ -129,15 +129,15 @@ if unanswered:
     st.write(QUESTIONS[index])
 
     query = st.text_input(
-        "Search for a song or artist",
+        "Meklē dziesmu vai izpildītāju",
         key=f"query_{participant_id}_{index}",
         placeholder="e.g. Daft Punk One More Time",
     )
 
     if query.strip():
-        st.caption(f"Searching for: {query}")
+        st.caption(f"Meklē: {query}")
 
-        with st.spinner("Searching Spotify..."):
+        with st.spinner("Pārlūko Spotify..."):
             start_time = time.time()
 
             try:
@@ -168,7 +168,7 @@ if unanswered:
 
         if not tracks:
             st.info(
-                "No songs found. Try another search."
+                "Dziesma nav atrasta, pamēģini citu!"
             )
 
         for track in tracks:
@@ -206,8 +206,8 @@ if unanswered:
                                 "Could not reserve selected song"
                             )
                             st.error(
-                                "We couldn't save your song. "
-                                "Please try again."
+                                "Šo dziesmu vairs nevar izvelēties. "
+                                "Izvelies citu."
                             )
                             st.stop()
 
@@ -228,14 +228,12 @@ if unanswered:
 
                                 if result == "added":
                                     st.success(
-                                        "Song saved and added "
-                                        "to your Spotify playlist! 🎵"
+                                        "Dziesma saglabāta un pievienota "
+                                        "tautas bumbas kopējai playlistei! 🎵"
                                     )
                                 else:
                                     st.success(
-                                        "Song saved! It was "
-                                        "already in your "
-                                        "Spotify playlist. 🎵"
+                                        "Dziesma saglabāta, tā jau ir playlistē. 🎵"
                                     )
 
                             except Exception:
@@ -243,10 +241,10 @@ if unanswered:
                                     "Song saved, but Spotify sync failed"
                                 )
                                 st.warning(
-                                    "Your song is saved, but "
-                                    "Spotify sync failed. "
-                                    "It will be retried "
-                                    "when the app runs again."
+                                    "Tava dziesma ir saglabāta, bet "
+                                    "Spotify sinhronizācija nenotika. "
+                                    "Mēgināsim vēlreiz, "
+                                    "kad aplikācija atkal strādās."
                                 )
 
                             st.rerun()
@@ -269,16 +267,15 @@ else:
         )
 
     st.info(
-        "Your songs are saved. "
-        "You can listen to them in the shared "
-        "Spotify playlist."
+        "Tavas dziesmas ir saglabātas. "
+        "Tās dzirdēsi jau drīz mūsu dzimšanas dienas pasākumā."
     )
 
     st.link_button(
-        "Open Spotify playlist",
+        "Atvērt playlisti Spotify",
         "https://open.spotify.com/playlist/"
         "0JlLQXk7qN7YPagU01Q1t3",
     )
 
-    st.info("Enter your name to get started.")
+    # st.info("Enter your name to get started.")
 
