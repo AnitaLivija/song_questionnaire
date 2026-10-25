@@ -1,8 +1,12 @@
 
+import logging
+
 import streamlit as st
 import spotipy
 from spotipy.oauth2 import SpotifyOAuth
 
+
+logger = logging.getLogger(__name__)
 
 PLAYLIST_ID = "0JlLQXk7qN7YPagU01Q1t3"
 
@@ -15,6 +19,8 @@ SCOPES = (
 
 @st.cache_resource
 def get_spotify_client():
+    logger.info("Initializing Spotify client")
+
     auth = SpotifyOAuth(
         client_id=st.secrets["SPOTIFY_CLIENT_ID"],
         client_secret=st.secrets["SPOTIFY_CLIENT_SECRET"],
@@ -23,17 +29,23 @@ def get_spotify_client():
         open_browser=False,
     )
 
-    return spotipy.Spotify(auth_manager=auth)
+    return spotipy.Spotify(
+        auth_manager=auth,
+        requests_timeout=10,
+        retries=0,
+    )
 
 
 def search_tracks(query):
-    if not query.strip():
+    if not query or not query.strip():
         return []
+
+    logger.info("Starting Spotify search")
 
     sp = get_spotify_client()
 
     results = sp.search(
-        q=query,
+        q=query.strip(),
         type="track",
         limit=10,
     )
@@ -41,6 +53,8 @@ def search_tracks(query):
     tracks = []
 
     for item in results["tracks"]["items"]:
+        album_images = item["album"].get("images", [])
+
         tracks.append({
             "id": item["id"],
             "uri": item["uri"],
@@ -51,11 +65,16 @@ def search_tracks(query):
             ),
             "album": item["album"]["name"],
             "image": (
-                item["album"]["images"][0]["url"]
-                if item["album"]["images"]
+                album_images[0]["url"]
+                if album_images
                 else None
             ),
         })
+
+    logger.info(
+        "Spotify search completed: %d results",
+        len(tracks),
+    )
 
     return tracks
 
