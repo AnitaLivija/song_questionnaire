@@ -1,8 +1,13 @@
-
+import hmac
+import json
 import logging
-import time
+import secrets as py_secrets
 
 import streamlit as st
+from spotipy.oauth2 import SpotifyOAuth
+from spotipy.cache_handler import MemoryCacheHandler
+import time
+
 
 from spotify_client import (
     search_tracks,
@@ -34,6 +39,124 @@ QUESTIONS = [
     "Kura dziesma vislabāk raksturo Tevi ballītēs?",
 ]
 
+
+# Temporary, password-protected Spotify authorization setup.
+params = st.query_params
+setup_mode = (
+    params.get("spotify_setup") == "1"
+    or "code" in params
+    or "error" in params
+)
+
+if setup_mode:
+    st.title("Spotify authorization setup")
+
+    password = st.text_input(
+        "Enter the Spotify setup password",
+        type="password",
+    )
+
+    if not hmac.compare_digest(
+        password,
+        st.secrets["SPOTIFY_SETUP_PASSWORD"],
+    ):
+        st.info("Enter your setup password to continue.")
+        st.stop()
+
+    auth = SpotifyOAuth(
+        client_id=st.secrets["SPOTIFY_CLIENT_ID"],
+        client_secret=st.secrets["SPOTIFY_CLIENT_SECRET"],
+        redirect_uri=st.secrets["SPOTIFY_REDIRECT_URI"],
+        scope=(
+            "playlist-modify-private "
+            "playlist-modify-public "
+            "playlist-read-private"
+        ),
+        cache_handler=MemoryCacheHandler(),
+        open_browser=False,
+    )
+
+    if "error" in params:
+        st.error(
+            "Spotify authorization was denied or failed: "
+            + str(params.get("error"))
+        )
+        st.stop()
+
+    if "code" in params:
+        returned_state = params.get("state")
+        expected_state = st.session_state.get(
+            "spotify_oauth_state"
+        )
+
+        if (
+            not expected_state
+            or not returned_state
+            or not hmac.compare_digest(
+                str(returned_state),
+                str(expected_state),
+            )
+        ):
+            st.error(
+                "The authorization session expired or did not "
+                "match. Start the setup again."
+            )
+            st.stop()
+
+        try:
+            token_info = auth.get_access_token(
+                params.get("code"),
+                as_dict=True,
+                check_cache=False,
+            )
+
+            if not token_info or not token_info.get(
+                "refresh_token"
+            ):
+                st.error(
+                    "Spotify did not return a refresh token. "
+                    "Please restart authorization."
+                )
+                st.stop()
+
+            st.session_state["spotify_token_info"] = token_info
+            st.query_params.clear()
+            st.rerun()
+
+        except Exception:
+            logger.exception(
+                "Spotify authorization exchange failed"
+            )
+            st.error(
+                "Spotify authorization failed. Check the "
+                "Streamlit app logs."
+            )
+            st.stop()
+
+    token_info = st.session_state.get("spotify_token_info")
+
+    if token_info:
+        st.success("Spotify authorization completed!")
+        st.write(
+            "Copy the token JSON below into Streamlit Secrets. "
+            "Do not share it or commit it to GitHub."
+        )
+        st.code(json.dumps(token_info), language="json")
+        st.stop()
+
+    if st.button("Start Spotify authorization"):
+        state = py_secrets.token_urlsafe(32)
+        st.session_state["spotify_oauth_state"] = state
+
+        authorize_url = auth.get_authorize_url(state=state)
+
+        st.markdown(
+            f'<a href="{authorize_url}" target="_self">'
+            "Continue to Spotify to approve access</a>",
+            unsafe_allow_html=True,
+        )
+
+    st.stop()
 
 # Initialize the Supabase database.
 try:
