@@ -1,15 +1,32 @@
 
 import os
 
+import streamlit as st
 import psycopg
+from dotenv import load_dotenv
 
 
-DATABASE_URL = os.environ["DATABASE_URL"]
+load_dotenv()
+
+
+def get_database_url():
+    url = os.getenv("DATABASE_URL")
+
+    if not url:
+        try:
+            url = st.secrets["DATABASE_URL"]
+        except (KeyError, FileNotFoundError):
+            raise RuntimeError(
+                "DATABASE_URL is missing. Configure it in "
+                "your .env file or Streamlit Secrets."
+            )
+
+    return url
 
 
 def connect():
     return psycopg.connect(
-        DATABASE_URL,
+        get_database_url(),
         sslmode="require",
     )
 
@@ -38,7 +55,6 @@ def init_db():
             )
         """)
 
-        # Safely add the column if the table already exists.
         con.execute("""
             ALTER TABLE reservations
             ADD COLUMN IF NOT EXISTS spotify_synced
@@ -54,26 +70,29 @@ def reserve_song(
 ):
     with connect() as con:
         try:
-            con.execute("""
-                INSERT INTO reservations (
+            # Use a savepoint so a rejected insert does not
+            # prevent the duplicate-check query from running.
+            with con.transaction():
+                con.execute("""
+                    INSERT INTO reservations (
+                        session_id,
+                        participant_id,
+                        question_number,
+                        track_id,
+                        track_uri,
+                        track_name,
+                        artist_name
+                    )
+                    VALUES (%s, %s, %s, %s, %s, %s, %s)
+                """, (
                     session_id,
                     participant_id,
                     question_number,
-                    track_id,
-                    track_uri,
-                    track_name,
-                    artist_name
-                )
-                VALUES (%s, %s, %s, %s, %s, %s, %s)
-            """, (
-                session_id,
-                participant_id,
-                question_number,
-                track["id"],
-                track["uri"],
-                track["name"],
-                track["artist"],
-            ))
+                    track["id"],
+                    track["uri"],
+                    track["name"],
+                    track["artist"],
+                ))
 
             return True, "Song accepted!"
 
