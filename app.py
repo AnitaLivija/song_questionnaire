@@ -1,4 +1,6 @@
 
+import logging
+
 import streamlit as st
 
 from spotify_client import (
@@ -14,6 +16,10 @@ from database import (
 )
 
 
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
+
+
 st.set_page_config(
     page_title="Our Group Soundtrack",
     page_icon="🎵",
@@ -27,45 +33,62 @@ QUESTIONS = [
     "Kura dziesma vislabāk raksturo Tevi ballītēs?",
 ]
 
-init_db()
+
+# Initialize the Supabase database.
+try:
+    init_db()
+except Exception:
+    logger.exception("Database initialization failed")
+    st.error(
+        "The database could not be reached. "
+        "Please try again later."
+    )
+    st.stop()
 
 
 def sync_pending_songs():
-    """Retry previously saved songs that haven't synced yet."""
+    """Retry saved songs that have not synced to Spotify."""
 
-    pending = get_unsynced_songs(SESSION_ID)
+    try:
+        pending = get_unsynced_songs(SESSION_ID)
+    except Exception:
+        logger.exception("Could not load pending Spotify songs")
+        return
 
     for track_id, track_uri in pending:
         try:
             add_track_to_playlist(track_uri)
-
-            mark_song_synced(
-                SESSION_ID,
-                track_id,
-            )
-
+            mark_song_synced(SESSION_ID, track_id)
         except Exception:
-            # Leave the song marked as unsynced so it can
-            # be retried on a later app interaction.
-            continue
+            logger.exception(
+                "Could not sync a pending song to Spotify"
+            )
 
 
 st.title("🎵 Our Group Soundtrack")
-st.write("Four questions. Four songs. One shared playlist.")
+st.write("Three questions. Three songs. One shared playlist.")
 
 name = st.text_input("What's your name?")
 
 if name.strip():
-    # Retry any saved songs that still need syncing.
-    sync_pending_songs()
-
     participant_id = name.strip().casefold()
 
-    # Restore saved answers from the database.
-    saved_rows = get_participant_answers(
-        SESSION_ID,
-        participant_id,
-    )
+    # Retry saved songs that previously failed to sync.
+    sync_pending_songs()
+
+    # Load the participant's existing answers.
+    try:
+        saved_rows = get_participant_answers(
+            SESSION_ID,
+            participant_id,
+        )
+    except Exception:
+        logger.exception("Could not load participant answers")
+        st.error(
+            "We couldn't load your saved answers. "
+            "Please try again later."
+        )
+        st.stop()
 
     saved_answers = {
         row[0] - 1: {
@@ -77,8 +100,7 @@ if name.strip():
         for row in saved_rows
     }
 
-    st.session_state["saved_answers"] = saved_answers
-    answers = st.session_state["saved_answers"]
+    answers = saved_answers
 
     # Find the first unanswered question.
     unanswered = [
@@ -94,7 +116,6 @@ if name.strip():
         st.subheader(
             f"Question {index + 1} of {len(QUESTIONS)}"
         )
-
         st.write(QUESTIONS[index])
 
         query = st.text_input(
@@ -104,8 +125,15 @@ if name.strip():
         )
 
         if query.strip():
+            st.caption(f"Searching for: {query}")
+
             try:
-                tracks = search_tracks(query)
+                with st.spinner("Searching Spotify..."):
+                    tracks = search_tracks(query)
+
+                st.caption(
+                    f"Spotify returned {len(tracks)} tracks."
+                )
 
                 if not tracks:
                     st.info(
@@ -117,7 +145,7 @@ if name.strip():
                         col1, col2 = st.columns([1, 3])
 
                         with col1:
-                            if track["image"]:
+                            if track.get("image"):
                                 st.image(
                                     track["image"],
                                     use_container_width=True,
@@ -135,12 +163,22 @@ if name.strip():
                                     f"{index}_{track['id']}"
                                 ),
                             ):
-                                accepted, message = reserve_song(
-                                    SESSION_ID,
-                                    participant_id,
-                                    index + 1,
-                                    track,
-                                )
+                                try:
+                                    accepted, message = reserve_song(
+                                        SESSION_ID,
+                                        participant_id,
+                                        index + 1,
+                                        track,
+                                    )
+                                except Exception:
+                                    logger.exception(
+                                        "Could not reserve selected song"
+                                    )
+                                    st.error(
+                                        "We couldn't save your song. "
+                                        "Please try again."
+                                    )
+                                    st.stop()
 
                                 if accepted:
                                     try:
@@ -166,6 +204,9 @@ if name.strip():
                                             )
 
                                     except Exception:
+                                        logger.exception(
+                                            "Song saved, but Spotify sync failed"
+                                        )
                                         st.warning(
                                             "Your song is saved, but "
                                             "Spotify sync failed. "
@@ -178,16 +219,16 @@ if name.strip():
                                 else:
                                     st.error(message)
 
-            except Exception:
+            except Exception as e:
+                logger.exception("Spotify search failed")
                 st.error(
-                    "Spotify search failed. "
-                    "Please check your Spotify connection "
-                    "and authorization."
+                    "Spotify search failed "
+                    f"({type(e).__name__}). "
+                    "Please check the app logs."
                 )
 
     else:
         st.progress(1.0)
-
         st.success("You've answered all three questions!")
 
         st.subheader("Your song choices")
@@ -214,3 +255,4 @@ if name.strip():
 
 else:
     st.info("Enter your name to get started.")
+
