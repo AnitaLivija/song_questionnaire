@@ -145,8 +145,8 @@ if setup_mode:
             st.session_state["spotify_token_info"] = token_info
 
             st.query_params.clear()
+            st.query_params["spotify_setup"] = "1"
             st.rerun()
-
         except Exception:
             logger.exception(
                 "Spotify authorization exchange failed"
