@@ -1,9 +1,11 @@
 
+import json
 import logging
 
 import streamlit as st
 import spotipy
 from spotipy.oauth2 import SpotifyOAuth
+from spotipy.cache_handler import MemoryCacheHandler
 
 
 logger = logging.getLogger(__name__)
@@ -19,15 +21,32 @@ SCOPES = (
 
 @st.cache_resource
 def get_spotify_client():
-    logger.info("Initializing Spotify client")
+    token_info = json.loads(
+        st.secrets["SPOTIFY_TOKEN_INFO"]
+    )
+
+    cache_handler = MemoryCacheHandler(
+        token_info=token_info
+    )
 
     auth = SpotifyOAuth(
         client_id=st.secrets["SPOTIFY_CLIENT_ID"],
         client_secret=st.secrets["SPOTIFY_CLIENT_SECRET"],
-        redirect_uri=st.secrets["SPOTIFY_REDIRECT_URI"],
+        redirect_uri="http://127.0.0.1:8888/callback",
         scope=SCOPES,
+        cache_handler=cache_handler,
         open_browser=False,
     )
+
+    token = auth.validate_token(
+        cache_handler.get_cached_token()
+    )
+
+    if not token:
+        raise RuntimeError(
+            "Spotify token is missing or invalid. "
+            "Spotify authorization needs to be completed."
+        )
 
     return spotipy.Spotify(
         auth_manager=auth,
@@ -108,3 +127,4 @@ def add_track_to_playlist(track_uri):
     )
 
     return "added"
+
